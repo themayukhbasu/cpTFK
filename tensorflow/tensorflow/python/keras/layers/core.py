@@ -73,7 +73,7 @@ class Masking(Layer):
         for more details.
     """
     """
-        # -- mb !ND
+        # -- mb !Done
         We are trying to mask a timestep (1st dimension of inputs[timestep x feature] )
         in case all the feature elements are equal to the `mask_value`
         
@@ -134,7 +134,40 @@ class Masking(Layer):
             we have to typecast it to dtype of the inputs
         
         3.1:
-            !!pending
+            `outputs._keras_mask = array_ops.squeeze(boolean_mask, asix=-1)`
+                the command attaches a mask tensor to the `output._keras_mask`
+            The `_keras_mask` contains a mask tensor
+                (2D tensor with shape (batch, sequence_length) or (batch, timestep) )
+            The `array_ops.squeeze()` is tf.squeeze
+                It removes dimensions of size 1 from shape of a tensor
+                Example 1:
+                    # `t` is a tensor of shape [1, 2, 1, 3, 1, 1]
+                    tf.shape( tf.squeeze(t) )  # [2, 3]
+                    tf.shape( tf.squeeze(t, [2, 4]) )   # [1, 2, 3, 1]
+                Example 2:
+                    > t = np.array([[[[1], [2], [3]], [[4], [5], [6]]]])
+                    > t.shape
+                    #  (1, 2, 3, 1)
+                    > tf.squeeze(t)
+                    #  <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
+                    #       array([[1, 2, 3],
+                    #              [4, 5, 6]])>
+            Example of _keras_mask:
+                Padded Sequence:
+                    [[ 711  632   71    0    0    0]
+                     [  73    8 3215   55  927    0]
+                     [  83   91    1  645 1253  927]]
+                _keras_masked:
+                   tf.Tensor(
+                    [[ True  True  True False False False]
+                     [ True  True  True  True  True False]
+                     [ True  True  True  True  True  True]], shape=(3, 6), dtype=bool) 
+            Why the `squeeze` needed?
+                `boolean_mask` has a shape of (batch, timestep, 1)
+                    tf.Tensor(
+                    [[ [True]  [True]  [True] [False] [False]]
+                     [ [True]  [True]  [True]  [True]  [True] [False]]], shape=(2, 5, 1), dtype=bool)
+                squeeze remove the single dimensioned elements [[True] [False]] -> [True False]     
     """
 
     def __init__(self, mask_value=0., **kwargs):
@@ -164,7 +197,7 @@ class Masking(Layer):
         return K.any(math_ops.not_equal(inputs, self.mask_value), axis=1)
 
     def call(self, inputs):
-        # --mb !ND
+        # --mb !done
         boolean_mask = K.any(
             math_ops.not_equal(inputs, self.mask_value),
             axis=-1,    # reducing the last axis
@@ -173,3 +206,4 @@ class Masking(Layer):
         # Compute the mask and outputs simultaneously.
         outputs._keras_mask = array_ops.squeeze(boolean_mask, asix=-1)
         return outputs
+
