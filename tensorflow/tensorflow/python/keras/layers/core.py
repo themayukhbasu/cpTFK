@@ -6,29 +6,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
-import functools
-import operator
-import sys
-import textwrap
-import types as python_types
-import warnings
-
-import numpy as np
-
-from tensorflow.python.eager import backprop
-from tensorflow.python.eager import context
+from tensorflow.python.eager import context  # --mb for eager execution
+from tensorflow.python.framework import constant_op
 
 from tensorflow.python.keras import backend as K
 
-
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine.input_spec import InputSpec
 
+from tensorflow.python.keras.utils import conv_utils
 
 from tensorflow.python.ops import array_ops
-
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
-
 
 from tensorflow.python.util.tf_export import keras_export
 
@@ -73,7 +63,7 @@ class Masking(Layer):
         for more details.
     """
     """
-        # -- mb !Done
+        # --mb !Done
         We are trying to mask a timestep (1st dimension of inputs[timestep x feature] )
         in case all the feature elements are equal to the `mask_value`
         
@@ -112,7 +102,7 @@ class Masking(Layer):
                 will compute bitwise reduction (logical OR) across dimensions of a tensor
                 # K.any() does the following:
                 #   Calls the tf.math.reduce_any()
-                # This does NOT have the same function as python's any() method
+                # This has almost similar function as python's any() method, except that it works on arrays
                 # Example:
                 #   x = [
                 #       [True, True],
@@ -200,10 +190,64 @@ class Masking(Layer):
         # --mb !done
         boolean_mask = K.any(
             math_ops.not_equal(inputs, self.mask_value),
-            axis=-1,    # reducing the last axis
+            axis=-1,  # reducing the last axis
             keepdims=True)
         outputs = inputs * math_ops.cast(boolean_mask, inputs.dtype)
         # Compute the mask and outputs simultaneously.
         outputs._keras_mask = array_ops.squeeze(boolean_mask, asix=-1)
         return outputs
 
+
+@keras_export('keras.layers.Flatten')
+class Flatten(Layer):
+    """
+        Flattens the input. Does not affect the batch size.
+
+        Note: If inputs are shaped `(batch,)` without a feature axis,
+        then flattening adds an extra channel dimension and output shape is
+        `(batch, 1)`.
+
+        Arguments:
+            date_format: A string,
+                one of `channels_last` (default) or `channels_first`.
+                The ordering of the dimensions in the inputs.
+                `channels_last` corresponds to inputs with shape
+                `(batch, ..., channels)` while `channels_first` corresponds to
+                inputs with shape `(batch, channels, ...)`.
+                It defaults to the `image_data_format` value found in your
+                Keras config file at `~/.keras/keras.json`.
+                If you never set it, then it will be "channels_last".
+
+        Example:
+             model = tf.keras.Sequential()
+             model.add(tf.keras.layers.Conv2D(64, 3, 3, input_shape=(3, 32, 32)))
+             model.output_shape
+             ## (None, 1, 10, 64)
+
+             model.add(Flatten())
+             model.output_shape
+             ## (None, 640)
+
+    """
+
+    def __init__(self, data_format=None, **kwargs):
+        super(Flatten, self).__init__(**kwargs)
+        self.data_format = conv_utils.normalize_data_format(data_format)
+        self.input_spec = InputSpec(min_ndim=1)
+        self._channels_first = self.data_format == 'channels_first'
+
+    def call(self, inputs):
+        if self._channels_first:
+            rank = inputs.shape.rank
+            if rank and rank > 1:
+                # Switch to channels-last format.
+                permutation = [0]
+                permutation.extend(range(2, rank))
+                permutation.append(1)
+                inputs = array_ops.transpose(inputs, perm=permutation)
+
+        if context.execution_eagerly():
+            # Full static shape is guaranteed to be available.
+            # Performance: Using `constant_op` is much faster than passing a list.
+            flattened_shape = constant_op.constant([inputs.shape[0], -1])
+            return gen_array_ops.reshape(inputs, flattened_shape)
