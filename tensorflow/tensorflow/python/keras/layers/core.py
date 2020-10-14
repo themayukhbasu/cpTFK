@@ -6,8 +6,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+import operator
+
+import numpy as np
+
 from tensorflow.python.eager import context  # --mb for eager execution
 from tensorflow.python.framework import constant_op
+
+from tensorflow.python.framework import tensor_shape
 
 from tensorflow.python.keras import backend as K
 
@@ -229,6 +236,45 @@ class Flatten(Layer):
              ## (None, 640)
 
     """
+    """
+        # --mb
+        Util Function Explanation:
+        - tf.rank()
+            The rank of a tensor is the number of dimensions of the tensor
+            Example:
+                # shape of tensor 't' is [2, 2, 3]
+                t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
+                tf.rank(t)  # 3
+  
+        - tf.reshape()
+            syntax:     `tf.reshape(tensor, shape, name=None)`
+            Given a `tensor`, this operation returns a new `tf.Tensor` that has the same values
+            as the `tensor` in the same order, except with a new shape given by `shape`
+            **  If one component of the `shape` is the special value `-1`, the size 
+                of that dimension is computed so that the total size remains constant.
+                In particular, a `shape` of `[-1]` flattens into 1-D.
+                At most one component of `shape` can be `-1`.
+            Example:
+                >>> t = [[[1, 1, 1],
+                          [2, 2, 2]],
+                         [[3, 3, 3],
+                          [4, 4, 4]],
+                         [[5, 5, 5],
+                          [6, 6, 6]]]
+                
+                >>> print(tf.shape(t).numpy())    
+                # [3 2 3]
+                
+                >>> tf.reshape(t, [2, -1]) 
+                # <tf.Tensor: shape=(2, 9), dtype=int32, numpy=
+                # array([[1, 1, 1, 2, 2, 2, 3, 3, 3],
+                #        [4, 4, 4, 5, 5, 5, 6, 6, 6]], dtype=int32)>
+        
+        - tf.constant()
+            syntax:     `tf.constant(value, dtype=None, shape=None, name='Const')`
+            Creates a constant tensor from a tensor-like object.       
+                
+    """
 
     def __init__(self, data_format=None, **kwargs):
         super(Flatten, self).__init__(**kwargs)
@@ -251,3 +297,76 @@ class Flatten(Layer):
             # Performance: Using `constant_op` is much faster than passing a list.
             flattened_shape = constant_op.constant([inputs.shape[0], -1])
             return gen_array_ops.reshape(inputs, flattened_shape)
+        else:
+            input_shape = inputs.shape
+            rank = input_shape.rank
+            if rank == 1:
+                # --mb
+                #   rank=1 means that the input shape is `(batch,)`
+                #   so the dimension is expanded so that the shape becomes `(batch,1)`
+                return array_ops.expand_dims_v2(inputs, axis=1)
+            else:
+                batch_dim = tensor_shape.dimension_value(input_shape[0])
+                non_batch_dims = input_shape[1:]
+                # reshape in a way that preserves as much shape info as possible.
+                if non_batch_dims.is_fully_defined():
+                    # --mb
+                    # tf.TensorShape.is_fully_defined() returns true if the all the shape is fully defined
+                    # for example a tensor of shape TensorShape([None, 256]) is partially defined
+                    # TensorShape([16, 256]) is fully defined
+                    # Example:
+                    #   >>> s = tf.TensorShape([16,256])
+                    #   >>> s
+                    #    TensorShape([16, 256])
+                    #   >>> s.is_fully_defined()
+                    #   True
+                    #   >>> tf.TensorShape([None, 256]).is_fully_defined()
+                    #   False
+
+                    # functools.reduce() explanation:
+                    #   Apply function of two arguments cumulatively to the items of iterable,
+                    #   from left to right, so as to reduce the iterable to a single value
+                    #   Syntax: functools.reduce(function, iterable)
+                    #   Example:
+                    #       functools.reduce(lambda x, y: x+y, [1, 2, 3, 4, 5])
+                    #       calculates ((((1+2)+3)+4)+5).
+
+                    # --mb
+                    # returns the multiplied value of the non-batch dimensions
+                    # For ex:  [2, 5, 2] => [20]
+                    last_dim = int(functools.reduce(operator.mul, non_batch_dims))
+                    # --mb
+                    # >>> a.shape
+                    # (2, 3)
+                    # >>> last_dim = int(functools.reduce(operator.mul, a.shape))
+                    # >>> last_dim
+                    # 6
+                    # >>> tf.constant([-1, last_dim])
+                    # <tf.Tensor: shape=(2,), dtype=int32, numpy=array([-1,  6], dtype=int32)>
+                    flattened_shape = constant_op.constant([-1, last_dim])
+                elif batch_dim is not None:
+                    # --mb If batch_dim is defined
+                    flattened_shape = constant_op.constant([int(batch_dim), -1])
+                else:
+                    flattened_shape = [array_ops.shape_v2(inputs)[0], -1]
+                # --mb reshapes the inputs as per flattened_shape; -1 would be autocalculated
+                return array_ops.reshape(inputs, flattened_shape)
+
+    def compute_output_shape(self, input_shape):
+        # !pending
+        input_shape = tensor_shape.as_shape(input_shape).as_list()
+        if not input_shape:
+            output_shape = tensor_shape.TensorShape([1])
+        else:
+            output_shape = [input_shape[0]]
+        if np.all(input_shape[1:]):
+            output_shape += [np.prod(input_shape[1:], dtype=int)]
+        else:
+            output_shape += [None]
+        return tensor_shape.TensorShape(output_shape)
+
+    def get_config(self):
+        # !pending
+        config = super(Flatten, self).get_config()
+        config.update({'data_format': self.data_format})
+        return config
