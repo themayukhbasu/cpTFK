@@ -8,7 +8,7 @@ Files:
 - [keras/layers/core.py](https://github.com/themayukhbasu/cpTFK/blob/main/tensorflow/tensorflow/python/keras/layers/core.py)
     - [x] class Masking
     - [x] class Flatten
-    - [ ] class Dense
+    - [ ] class Dense (*started*)
     - [ ] class Activation
     - [ ] class Dropout
    

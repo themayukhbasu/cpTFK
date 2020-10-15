@@ -353,7 +353,7 @@ class Flatten(Layer):
                 return array_ops.reshape(inputs, flattened_shape)
 
     def compute_output_shape(self, input_shape):
-        # !pending
+        # !to-do
         input_shape = tensor_shape.as_shape(input_shape).as_list()
         if not input_shape:
             output_shape = tensor_shape.TensorShape([1])
@@ -366,7 +366,34 @@ class Flatten(Layer):
         return tensor_shape.TensorShape(output_shape)
 
     def get_config(self):
-        # !pending
+        # !to-do
         config = super(Flatten, self).get_config()
         config.update({'data_format': self.data_format})
         return config
+
+
+@keras_export('keras.layers.Dense')
+class Dense(Layer):
+    # --mb !ND
+    """
+        Just your regular densely-connected NN layer.
+
+        `Dense` implements the operation:
+            `output = activation(dot(input, kernel) + bias)`
+        where `activation` is the element-wise activation function
+        passed as the `activation` argument, `kernel` is a weights matrix
+        created by the layer, and `bias` is a bias vector created by the layer
+        (only applicable if `use_bias` is `True`).
+
+        Note: If the input to the layer has a rank greater than 2, then `Dense`
+        computes the dot product between the `inputs` and the `kernel` along the
+        last axis if the `inputs` and axis 1 of the `kernel` (using `tf.tensordot`).
+            For example, if input has dimensions `(batch_size, d0, d1)`,
+            then we create a `kernel` with shape `(d1, units)`, and the `kernel` operates
+            along axis 2 of the `input`, on every sub-tensor shape `(1, 1, d1)`
+            (there are `batch_size * d0` such sub-tensors)
+            The output in this case will have the shape `(batch_size, d0, units)`.
+
+
+    """
+    pass
